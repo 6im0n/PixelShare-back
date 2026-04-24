@@ -8,15 +8,14 @@
     "start": "NODE_ENV=production bun src/main.ts",
     "build": "bun build src/main.ts --outdir dist --target bun",
     "db:generate": "bunx drizzle-kit generate",
-    "db:migrate": "bunx drizzle-kit migrate",
+    "db:migrate": "bun run drizzle-kit migrate",
     "db:studio": "bunx drizzle-kit studio",
     "typecheck": "bun x tsc --noEmit"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/passport-jwt": "^4.0.1",
-    "@types/sharp": "^0.32.0",
-    "drizzle-kit": "^0.31.10"
+    "@types/sharp": "^0.32.0"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -38,6 +37,7 @@
     "argon2": "^0.44.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.8.5",
     "fastify-plugin": "^5.1.0",
