@@ -9,6 +9,7 @@ RUN bun install --frozen-lockfile --production
 COPY src ./src
 COPY drizzle ./drizzle
 COPY drizzle.config.ts ./
+COPY tsconfig.json ./
 COPY package.json ./
 
 RUN mkdir -p /storage && chown pixelshare:pixelshare /storage
