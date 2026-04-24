@@ -63,6 +63,14 @@ export class LibrariesController {
     return this.libraries.grantClient(id, dto.clientId, user);
   }
 
+  @Post(':id/submit-selection')
+  submitSelection(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.libraries.submitSelection(id, user);
+  }
+
   @Delete(':id/clients/:clientId')
   revokeClient(
     @Param('id', ParseUUIDPipe) id: string,

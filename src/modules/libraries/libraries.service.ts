@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { rm, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DrizzleService } from '../../providers/drizzle/drizzle.service';
@@ -13,8 +13,14 @@ import {
   libraries,
   libraryClients,
   photos,
+  stars,
   users,
 } from '../../providers/drizzle/schema/schema';
+import {
+  ResendService,
+  clientSelectionEmailHtml,
+  photographerSelectionEmailHtml,
+} from '../../providers/resend/resend.service';
 import type { AuthUser } from '../../shared/types';
 import type { CreateLibraryDto, UpdateLibraryDto } from './dto/libraries.dto';
 
@@ -23,9 +29,88 @@ export class LibrariesService {
   private readonly storagePath: string;
   constructor(
     private readonly drizzle: DrizzleService,
-    config: ConfigService,
+    private readonly resend: ResendService,
+    private readonly config: ConfigService,
   ) {
     this.storagePath = config.get<string>('STORAGE_PATH') ?? 'storage';
+  }
+
+  private frontendBase(): string {
+    return (
+      this.config.get<string>('FRONTEND_OAUTH_REDIRECT')?.replace('/oauth/callback', '') ??
+      this.config.get<string>('PUBLIC_URL') ??
+      ''
+    );
+  }
+
+  async submitSelection(libraryId: string, user: AuthUser) {
+    if (!(await this.drizzle.canAccessLibrary(libraryId, user.id, user.role))) {
+      throw new ForbiddenException('no access to this library');
+    }
+    const lib = await this.drizzle.requireLibrary(libraryId);
+    const photographer = await this.drizzle.requireUser(lib.photographerId);
+    const link = `${this.frontendBase()}/libraries/${libraryId}`;
+
+    if (user.role === 'photographer' || user.role === 'admin') {
+      const clients = await this.drizzle.db
+        .select({ email: users.email, name: users.name })
+        .from(libraryClients)
+        .innerJoin(users, eq(users.id, libraryClients.clientId))
+        .where(eq(libraryClients.libraryId, libraryId));
+
+      await Promise.allSettled(
+        clients.map((c) =>
+          this.resend.send({
+            to: c.email,
+            subject: `${photographer.name} sent you a new selection in ${lib.name}`,
+            html: photographerSelectionEmailHtml({
+              clientName: c.name,
+              photographerName: photographer.name,
+              libraryName: lib.name,
+              link,
+            }),
+          }),
+        ),
+      );
+      return { notified: clients.length };
+    }
+
+    const photoIdsRows = await this.drizzle.db
+      .select({ id: photos.id })
+      .from(photos)
+      .where(eq(photos.libraryId, libraryId));
+    const photoIds = photoIdsRows.map((p) => p.id);
+    const total = photoIds.length;
+
+    let selectedCount = 0;
+    if (photoIds.length > 0) {
+      const rows = await this.drizzle.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(stars)
+        .where(
+          and(
+            eq(stars.userId, user.id),
+            inArray(stars.photoId, photoIds),
+            sql`${stars.value} > 0`,
+          ),
+        );
+      selectedCount = rows[0]?.count ?? 0;
+    }
+
+    await this.resend.send({
+      to: photographer.email,
+      subject: `${user.name} selected ${selectedCount}/${total} photos in ${lib.name}`,
+      html: clientSelectionEmailHtml({
+        photographerName: photographer.name,
+        clientName: user.name,
+        libraryName: lib.name,
+        selectedCount,
+        totalCount: total,
+        link,
+      }),
+    });
+
+    return { notified: 1, selectedCount, totalCount: total };
   }
 
   async list(user: AuthUser) {

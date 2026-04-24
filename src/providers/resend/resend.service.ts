@@ -87,6 +87,78 @@ export function passwordResetEmailHtml(opts: { name: string; link: string }): st
 </html>`;
 }
 
+export function photographerSelectionEmailHtml(opts: {
+  clientName: string;
+  photographerName: string;
+  libraryName: string;
+  link: string;
+}): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>New photos from ${opts.photographerName}</title></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 16px;">
+    <tr><td align="center">
+      <table width="100%" style="max-width:520px;background:#ffffff;border-radius:12px;padding:40px 36px;box-shadow:0 1px 4px rgba(0,0,0,.08);" cellpadding="0" cellspacing="0">
+        <tr><td style="padding-bottom:24px;border-bottom:1px solid #e4e4e7;">
+          <span style="font-size:20px;font-weight:800;letter-spacing:-.02em;color:#18181b;">PixelShare</span>
+        </td></tr>
+        <tr><td style="padding-top:28px;padding-bottom:8px;">
+          <p style="margin:0;font-size:15px;color:#3f3f46;">Hi <strong>${opts.clientName}</strong>,</p>
+        </td></tr>
+        <tr><td style="padding-bottom:28px;">
+          <p style="margin:0;font-size:15px;color:#52525b;line-height:1.6;"><strong>${opts.photographerName}</strong> sent you a new photo selection in <strong>${opts.libraryName}</strong>. Open the library to browse, rate, and pick your favorites.</p>
+        </td></tr>
+        <tr><td style="padding-bottom:28px;" align="center">
+          <a href="${opts.link}" style="display:inline-block;background:#6366f1;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:12px 32px;border-radius:8px;">Open library</a>
+        </td></tr>
+        <tr><td style="padding-top:20px;border-top:1px solid #e4e4e7;">
+          <p style="margin:0;font-size:12px;color:#a1a1aa;">Or copy this link: ${opts.link}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+export function clientSelectionEmailHtml(opts: {
+  photographerName: string;
+  clientName: string;
+  libraryName: string;
+  selectedCount: number;
+  totalCount: number;
+  link: string;
+}): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>${opts.clientName} finished their selection</title></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 16px;">
+    <tr><td align="center">
+      <table width="100%" style="max-width:520px;background:#ffffff;border-radius:12px;padding:40px 36px;box-shadow:0 1px 4px rgba(0,0,0,.08);" cellpadding="0" cellspacing="0">
+        <tr><td style="padding-bottom:24px;border-bottom:1px solid #e4e4e7;">
+          <span style="font-size:20px;font-weight:800;letter-spacing:-.02em;color:#18181b;">PixelShare</span>
+        </td></tr>
+        <tr><td style="padding-top:28px;padding-bottom:8px;">
+          <p style="margin:0;font-size:15px;color:#3f3f46;">Hi <strong>${opts.photographerName}</strong>,</p>
+        </td></tr>
+        <tr><td style="padding-bottom:28px;">
+          <p style="margin:0;font-size:15px;color:#52525b;line-height:1.6;"><strong>${opts.clientName}</strong> submitted their selection in <strong>${opts.libraryName}</strong>: <strong>${opts.selectedCount} / ${opts.totalCount}</strong> photos selected.</p>
+        </td></tr>
+        <tr><td style="padding-bottom:28px;" align="center">
+          <a href="${opts.link}" style="display:inline-block;background:#6366f1;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:12px 32px;border-radius:8px;">Review selection</a>
+        </td></tr>
+        <tr><td style="padding-top:20px;border-top:1px solid #e4e4e7;">
+          <p style="margin:0;font-size:12px;color:#a1a1aa;">Or copy this link: ${opts.link}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
 export function verificationEmailHtml(opts: {
   name: string;
   link: string;
