@@ -22,4 +22,4 @@ jobs:
             cd /home/pixelshare/backend
             git pull origin main
             docker compose down
-            docker compose --env-file .env up -d --build
+            docker compose --file docker-compose.prod.yml --env-file .env up -d --build
