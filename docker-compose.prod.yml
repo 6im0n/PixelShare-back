@@ -46,6 +46,8 @@ services:
       - "3001:3001"
     volumes:
       - storage:/storage
+    networks:
+      - internal
 
 volumes:
   db_data:
