@@ -90,6 +90,8 @@ export class AuthService {
     try {
       payload = await this.jwt.verifyAsync<JwtPayload>(refreshToken, {
         secret: this.refreshSecret,
+        algorithms: ['HS256'],
+        issuer: 'pixelshare',
       });
     } catch {
       throw new UnauthorizedException('invalid refresh token');
