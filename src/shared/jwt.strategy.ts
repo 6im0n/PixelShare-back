@@ -12,10 +12,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     private readonly drizzle: DrizzleService,
   ) {
     super({
-      jwtFromRequest: ExtractJwt.fromExtractors([
-        ExtractJwt.fromAuthHeaderAsBearerToken(),
-        ExtractJwt.fromUrlQueryParameter('access_token'),
-      ]),
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: config.getOrThrow<string>('JWT_SECRET'),
       algorithms: ['HS256'],
