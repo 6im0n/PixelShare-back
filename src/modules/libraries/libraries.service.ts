@@ -13,6 +13,7 @@ import {
   libraries,
   libraryClients,
   photos,
+  starHistory,
   stars,
   users,
 } from '../../providers/drizzle/schema/schema';
@@ -232,10 +233,33 @@ export class LibrariesService {
 
   async revokeClient(id: string, clientId: string, user: AuthUser) {
     await this.assertOwnerOrAdmin(id, user);
+
+    const photoRows = await this.drizzle.db
+      .select({ id: photos.id })
+      .from(photos)
+      .where(eq(photos.libraryId, id));
+    const photoIds = photoRows.map((p) => p.id);
+
+    let clearedStars = 0;
+    if (photoIds.length > 0) {
+      const deletedStars = await this.drizzle.db
+        .delete(stars)
+        .where(and(eq(stars.userId, clientId), inArray(stars.photoId, photoIds)))
+        .returning({ photoId: stars.photoId });
+      clearedStars = deletedStars.length;
+
+      await this.drizzle.db
+        .delete(starHistory)
+        .where(
+          and(eq(starHistory.userId, clientId), inArray(starHistory.photoId, photoIds)),
+        );
+    }
+
     await this.drizzle.db
       .delete(libraryClients)
       .where(and(eq(libraryClients.libraryId, id), eq(libraryClients.clientId, clientId)));
-    return { revoked: true };
+
+    return { revoked: true, clearedStars };
   }
 
   async listClients(id: string, user: AuthUser) {
