@@ -14,6 +14,14 @@ import { AuthService } from './auth.service';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.getOrThrow<string>('JWT_SECRET'),
+        signOptions: {
+          algorithm: 'HS256',
+          issuer: 'pixelshare',
+        },
+        verifyOptions: {
+          algorithms: ['HS256'],
+          issuer: 'pixelshare',
+        },
       }),
     }),
   ],
