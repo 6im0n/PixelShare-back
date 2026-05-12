@@ -40,11 +40,20 @@ export class PhotosService {
     this.storagePath = resolve(config.get<string>('STORAGE_PATH') ?? './storage');
   }
 
-  async listByLibrary(libraryId: string, user: AuthUser) {
+  async listByLibrary(
+    libraryId: string,
+    user: AuthUser,
+    page: { limit: number; offset: number } = { limit: 100, offset: 0 },
+  ) {
     if (!(await this.drizzle.canAccessLibrary(libraryId, user.id, user.role))) {
       throw new ForbiddenException('no access');
     }
-    return this.drizzle.db.select().from(photos).where(eq(photos.libraryId, libraryId));
+    return this.drizzle.db
+      .select()
+      .from(photos)
+      .where(eq(photos.libraryId, libraryId))
+      .limit(Math.min(page.limit, 200))
+      .offset(Math.max(0, page.offset));
   }
 
   async upload(libraryId: string, user: AuthUser, file: UploadInput) {

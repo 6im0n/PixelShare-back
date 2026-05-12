@@ -226,11 +226,12 @@ export class LibrariesService {
     if (client.role !== 'client') {
       throw new BadRequestException('target user is not a client');
     }
-    await this.drizzle.db
+    const inserted = await this.drizzle.db
       .insert(libraryClients)
       .values({ libraryId: id, clientId })
-      .onConflictDoNothing();
-    return { granted: true };
+      .onConflictDoNothing()
+      .returning({ libraryId: libraryClients.libraryId });
+    return { granted: true, alreadyMember: inserted.length === 0 };
   }
 
   async revokeClient(id: string, clientId: string, user: AuthUser) {

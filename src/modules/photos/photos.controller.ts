@@ -7,6 +7,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
   Res,
   StreamableFile,
@@ -16,6 +17,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Readable } from 'node:stream';
 import { CurrentUser } from '../../shared/current-user.decorator';
 import type { AuthUser } from '../../shared/types';
+import { ListPhotosQueryDto } from './dto/photos.dto';
 import { PhotosService } from './photos.service';
 
 @ApiBearerAuth()
@@ -28,8 +30,12 @@ export class PhotosController {
   list(
     @Param('libraryId', ParseUUIDPipe) libraryId: string,
     @CurrentUser() user: AuthUser,
+    @Query() query: ListPhotosQueryDto,
   ) {
-    return this.photos.listByLibrary(libraryId, user);
+    return this.photos.listByLibrary(libraryId, user, {
+      limit: query.limit ?? 100,
+      offset: query.offset ?? 0,
+    });
   }
 
   @Post('libraries/:libraryId/photos')
@@ -53,7 +59,7 @@ export class PhotosController {
   }
 
   @Get('photos/:id/thumbnail')
-  @Header('Cache-Control', 'private, max-age=3600')
+  @Header('Cache-Control', 'private, max-age=0, must-revalidate')
   async thumbnail(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthUser,
