@@ -19,6 +19,23 @@ import { OAuthService } from './oauth.service';
 const STATE_COOKIE = 'oauth_state';
 const INVITATION_COOKIE = 'oauth_invitation';
 const INVITATION_CODE_RE = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/;
+const ALLOWED_FRONTEND_ORIGINS = new Set([
+  'https://pixelshare.srv.simon-gl.fr',
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+]);
+
+function isAllowedRedirect(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    return ALLOWED_FRONTEND_ORIGINS.has(u.origin);
+  } catch {
+    return false;
+  }
+}
 
 function safeEqual(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
@@ -100,6 +117,9 @@ export class OAuthController {
 
     const tokens = await this.oauth.handleCallback(provider, code, invitationCode);
     const frontendUrl = this.config.get<string>('FRONTEND_OAUTH_REDIRECT');
+    if (frontendUrl && !isAllowedRedirect(frontendUrl)) {
+      throw new BadRequestException('FRONTEND_OAUTH_REDIRECT origin not allowed');
+    }
     if (frontendUrl) {
       const params = new URLSearchParams({
         accessToken: tokens.accessToken,

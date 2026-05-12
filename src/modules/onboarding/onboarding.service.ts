@@ -37,7 +37,7 @@ export class OnboardingService implements OnModuleInit {
       return;
     }
 
-    this.onboardingKey = randomBytes(3).toString('hex').toUpperCase();
+    this.onboardingKey = randomBytes(16).toString('hex').toUpperCase();
     this.logger.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     this.logger.warn('  No admin/photographer found. Onboarding required.');
     this.logger.warn(`  Setup key: ${this.onboardingKey}`);
