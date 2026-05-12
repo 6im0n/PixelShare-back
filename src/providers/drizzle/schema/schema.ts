@@ -28,6 +28,9 @@ export const users = pgTable(
     oauthProviderId: varchar('oauth_provider_id', { length: 255 }),
     emailVerified: boolean('email_verified').notNull().default(false),
     emailVerificationToken: text('email_verification_token'),
+    emailVerificationTokenExpiresAt: timestamp('email_verification_token_expires_at', {
+      withTimezone: true,
+    }),
     pendingEmail: varchar('pending_email', { length: 320 }),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
