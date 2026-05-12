@@ -15,6 +15,13 @@
       "when": 1776991806239,
       "tag": "0001_lovely_galactus",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778545920869,
+      "tag": "0002_blushing_mephisto",
+      "breakpoints": true
     }
   ]
 }
