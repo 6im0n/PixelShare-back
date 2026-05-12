@@ -194,7 +194,7 @@ export class InvitationsService {
     const row = await this.findActiveByCode(args.code);
     if (!row) throw new BadRequestException('invitation invalid or expired');
     if (row.email.toLowerCase() !== args.email.toLowerCase()) {
-      throw new BadRequestException('email does not match invitation');
+      throw new BadRequestException('invitation invalid or expired');
     }
 
     const [updated] = await client
