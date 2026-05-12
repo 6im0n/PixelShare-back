@@ -9,6 +9,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { rm, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DrizzleService } from '../../providers/drizzle/drizzle.service';
+import { InvitationsService } from '../invitations/invitations.service';
 import {
   libraries,
   libraryClients,
@@ -32,6 +33,7 @@ export class LibrariesService {
     private readonly drizzle: DrizzleService,
     private readonly resend: ResendService,
     private readonly config: ConfigService,
+    private readonly invitations: InvitationsService,
   ) {
     this.storagePath = config.get<string>('STORAGE_PATH') ?? 'storage';
   }
@@ -264,7 +266,7 @@ export class LibrariesService {
 
   async listClients(id: string, user: AuthUser) {
     await this.assertOwnerOrAdmin(id, user);
-    return this.drizzle.db
+    const registered = await this.drizzle.db
       .select({
         id: users.id,
         email: users.email,
@@ -274,6 +276,19 @@ export class LibrariesService {
       .from(libraryClients)
       .innerJoin(users, eq(users.id, libraryClients.clientId))
       .where(eq(libraryClients.libraryId, id));
+
+    const pending = await this.invitations.pendingLibraryMembers(id);
+
+    return {
+      members: registered.map((r) => ({ ...r, status: 'registered' as const })),
+      pending: pending.map((p) => ({
+        invitationId: p.invitationId,
+        email: p.email,
+        name: p.name,
+        grantedAt: p.createdAt,
+        status: 'pending' as const,
+      })),
+    };
   }
 
   private async assertOwnerOrAdmin(libraryId: string, user: AuthUser) {
