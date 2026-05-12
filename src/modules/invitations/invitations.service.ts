@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull } from 'drizzle-orm';
 import { DrizzleService } from '../../providers/drizzle/drizzle.service';
 import type { DrizzleClient } from '../../providers/drizzle/drizzle.provider';
 import {
@@ -58,20 +58,28 @@ export class InvitationsService {
       await this.assertOwnsLibraries(actor, dto.libraryIds);
     }
 
-    const code = await this.allocateCode();
     const expiresAt = new Date(Date.now() + EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
-    const [row] = await this.drizzle.db
-      .insert(invitations)
-      .values({
-        code,
-        email,
-        name: dto.name.trim(),
-        invitedByUserId: actor.id,
-        expiresAt,
-      })
-      .returning();
-    if (!row) throw new BadRequestException('failed to create invitation');
+    let row: Invitation | undefined;
+    for (let i = 0; i < MAX_CODE_TRIES; i++) {
+      const candidate = this.generateCode();
+      const [maybe] = await this.drizzle.db
+        .insert(invitations)
+        .values({
+          code: candidate,
+          email,
+          name: dto.name.trim(),
+          invitedByUserId: actor.id,
+          expiresAt,
+        })
+        .onConflictDoNothing({ target: invitations.code })
+        .returning();
+      if (maybe) {
+        row = maybe;
+        break;
+      }
+    }
+    if (!row) throw new BadRequestException('could not allocate invitation code');
 
     if (dto.libraryIds?.length) {
       await this.drizzle.db
@@ -235,6 +243,7 @@ export class InvitationsService {
           eq(libraryInvitations.libraryId, libraryId),
           isNull(invitations.consumedAt),
           isNull(invitations.revokedAt),
+          gt(invitations.expiresAt, new Date()),
         ),
       );
   }
@@ -285,19 +294,6 @@ export class InvitationsService {
     return (
       rows.find((r) => !r.consumedAt && !r.revokedAt && r.expiresAt > new Date()) ?? null
     );
-  }
-
-  private async allocateCode(): Promise<string> {
-    for (let i = 0; i < MAX_CODE_TRIES; i++) {
-      const candidate = this.generateCode();
-      const [hit] = await this.drizzle.db
-        .select({ id: invitations.id })
-        .from(invitations)
-        .where(eq(invitations.code, candidate))
-        .limit(1);
-      if (!hit) return candidate;
-    }
-    throw new BadRequestException('could not allocate invitation code');
   }
 
   private generateCode(): string {
