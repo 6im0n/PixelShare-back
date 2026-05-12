@@ -1,10 +1,18 @@
-import { Body, Controller, Get, HttpCode, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../shared/current-user.decorator';
 import { Public } from '../../shared/public.decorator';
 import type { AuthUser } from '../../shared/types';
 import { AuthService } from './auth.service';
-import { ForgotPasswordDto, LoginDto, RefreshDto, RegisterDto, ResetPasswordDto } from './dto/auth.dto';
+import {
+  ForgotPasswordDto,
+  LoginDto,
+  RefreshDto,
+  RegisterDto,
+  ResetPasswordDto,
+  VerifyEmailDto,
+} from './dto/auth.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -12,12 +20,14 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Public()
+  @Throttle({ strict: { limit: 5, ttl: 60_000 } })
   @Post('register')
   register(@Body() dto: RegisterDto) {
     return this.auth.register(dto);
   }
 
   @Public()
+  @Throttle({ strict: { limit: 10, ttl: 60_000 } })
   @HttpCode(200)
   @Post('login')
   login(@Body() dto: LoginDto) {
@@ -25,6 +35,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @HttpCode(200)
   @Post('refresh')
   refresh(@Body() dto: RefreshDto) {
@@ -32,12 +43,15 @@ export class AuthController {
   }
 
   @Public()
-  @Get('verify-email')
-  verifyEmail(@Query('token') token: string) {
-    return this.auth.verifyEmailToken(token);
+  @Throttle({ strict: { limit: 10, ttl: 60_000 } })
+  @HttpCode(200)
+  @Post('verify-email')
+  verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.auth.verifyEmailToken(dto.token);
   }
 
   @Public()
+  @Throttle({ strict: { limit: 3, ttl: 60_000 } })
   @HttpCode(200)
   @Post('forgot-password')
   forgotPassword(@Body() dto: ForgotPasswordDto) {
@@ -45,6 +59,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ strict: { limit: 5, ttl: 60_000 } })
   @HttpCode(200)
   @Post('reset-password')
   resetPassword(@Body() dto: ResetPasswordDto) {

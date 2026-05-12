@@ -23,11 +23,20 @@ export class RegisterDto {
 
 export class LoginDto {
   @IsEmail()
+  @MaxLength(320)
   email!: string;
 
   @IsString()
-  @MinLength(1)
+  @MinLength(8)
+  @MaxLength(256)
   password!: string;
+}
+
+export class VerifyEmailDto {
+  @IsString()
+  @MinLength(8)
+  @MaxLength(256)
+  token!: string;
 }
 
 export class RefreshDto {

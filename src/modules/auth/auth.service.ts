@@ -98,6 +98,7 @@ export class AuthService {
         secret: this.refreshSecret,
         algorithms: ['HS256'],
         issuer: 'pixelshare',
+        audience: 'pixelshare-api',
       });
     } catch {
       throw new UnauthorizedException('invalid refresh token');
@@ -117,11 +118,15 @@ export class AuthService {
     };
     const accessToken = await this.jwt.signAsync(
       { ...base, type: 'access' },
-      { expiresIn: this.accessTtlSec },
+      { expiresIn: this.accessTtlSec, audience: 'pixelshare-api' },
     );
     const refreshToken = await this.jwt.signAsync(
       { ...base, type: 'refresh' },
-      { secret: this.refreshSecret, expiresIn: this.refreshTtlSec },
+      {
+        secret: this.refreshSecret,
+        expiresIn: this.refreshTtlSec,
+        audience: 'pixelshare-api',
+      },
     );
     return {
       accessToken,

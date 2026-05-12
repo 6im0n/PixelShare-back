@@ -17,6 +17,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       secretOrKey: config.getOrThrow<string>('JWT_SECRET'),
       algorithms: ['HS256'],
       issuer: 'pixelshare',
+      audience: 'pixelshare-api',
     });
   }
 
