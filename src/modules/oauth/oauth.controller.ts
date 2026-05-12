@@ -15,6 +15,7 @@ import { listOAuthProviders } from './oauth.registry';
 import { OAuthService } from './oauth.service';
 
 const INVITATION_COOKIE = 'oauth_invitation';
+const INVITATION_CODE_RE = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/;
 
 @ApiTags('oauth')
 @Controller('oauth')
@@ -45,7 +46,11 @@ export class OAuthController {
       maxAge: 600,
     });
     if (invitation) {
-      res.setCookie(INVITATION_COOKIE, invitation.toUpperCase(), {
+      const code = invitation.toUpperCase();
+      if (!INVITATION_CODE_RE.test(code)) {
+        throw new BadRequestException('invalid invitation code');
+      }
+      res.setCookie(INVITATION_COOKIE, code, {
         httpOnly: true,
         sameSite: 'lax',
         path: '/',
@@ -67,7 +72,8 @@ export class OAuthController {
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
     if (!code) throw new BadRequestException('missing code');
-    const invitationCode = (req.cookies?.[INVITATION_COOKIE] ?? '').toUpperCase() || undefined;
+    const raw = (req.cookies?.[INVITATION_COOKIE] ?? '').toUpperCase();
+    const invitationCode = INVITATION_CODE_RE.test(raw) ? raw : undefined;
     res.clearCookie(INVITATION_COOKIE, { path: '/' });
 
     const tokens = await this.oauth.handleCallback(provider, code, invitationCode);
