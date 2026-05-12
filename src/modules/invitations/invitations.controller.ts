@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -8,7 +9,10 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { IsUUID } from 'class-validator';
+
+const INVITATION_CODE_RE = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/;
 
 class AddInvitationLibraryDto {
   @IsUUID()
@@ -29,9 +33,14 @@ export class InvitationsController {
   constructor(private readonly invitations: InvitationsService) {}
 
   @Public()
+  @Throttle({ lookup: { limit: 20, ttl: 60_000 } })
   @Get('lookup/:code')
   lookup(@Param('code') code: string) {
-    return this.invitations.lookup(code);
+    const normalized = code?.toUpperCase() ?? '';
+    if (!INVITATION_CODE_RE.test(normalized)) {
+      throw new BadRequestException('invalid invitation code format');
+    }
+    return this.invitations.lookup(normalized);
   }
 
   @ApiBearerAuth()

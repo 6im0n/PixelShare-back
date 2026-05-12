@@ -18,7 +18,11 @@ export class ResendService {
 
   async send({ to, subject, html, from }: SendArgs): Promise<void> {
     if (!this.client) {
-      this.logger.warn(`RESEND_API_KEY missing — skipping email to ${to}`);
+      this.logger.warn('RESEND_API_KEY missing — skipping outbound email');
+      return;
+    }
+    if (/[\r\n]/.test(to) || /[\r\n]/.test(subject)) {
+      this.logger.error('refusing to send email with CRLF in recipient or subject');
       return;
     }
     const { error } = await this.client.emails.send({
