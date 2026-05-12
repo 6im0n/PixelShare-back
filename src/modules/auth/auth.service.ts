@@ -50,19 +50,15 @@ export class AuthService {
 
     const passwordHash = await hashPassword(dto.password);
 
-    const [user] = await this.drizzle.db
-      .insert(users)
-      .values({ email, name: dto.name, passwordHash, role: 'client' })
-      .returning();
-
-    if (!user) throw new BadRequestException('failed to create user');
-
-    try {
-      await this.invitations.consume({ code, userId: user.id, email });
-    } catch (err) {
-      await this.drizzle.db.delete(users).where(eq(users.id, user.id));
-      throw err;
-    }
+    const user = await this.drizzle.db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(users)
+        .values({ email, name: dto.name, passwordHash, role: 'client' })
+        .returning();
+      if (!created) throw new BadRequestException('failed to create user');
+      await this.invitations.consume({ code, userId: created.id, email }, tx);
+      return created;
+    });
 
     const token = randomUUID();
     await this.drizzle.db

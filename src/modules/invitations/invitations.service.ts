@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { DrizzleService } from '../../providers/drizzle/drizzle.service';
+import type { DrizzleClient } from '../../providers/drizzle/drizzle.provider';
 import {
   invitations,
   libraries,
@@ -178,14 +179,17 @@ export class InvitationsService {
     return { email: row.email, name: row.name };
   }
 
-  async consume(args: { code: string; userId: string; email: string }): Promise<void> {
+  async consume(
+    args: { code: string; userId: string; email: string },
+    client: DrizzleClient = this.drizzle.db,
+  ): Promise<void> {
     const row = await this.findActiveByCode(args.code);
     if (!row) throw new BadRequestException('invitation invalid or expired');
     if (row.email.toLowerCase() !== args.email.toLowerCase()) {
       throw new BadRequestException('email does not match invitation');
     }
 
-    const [updated] = await this.drizzle.db
+    const [updated] = await client
       .update(invitations)
       .set({ consumedAt: new Date(), consumedByUserId: args.userId })
       .where(
@@ -199,18 +203,18 @@ export class InvitationsService {
 
     if (!updated) throw new BadRequestException('invitation already used');
 
-    const links = await this.drizzle.db
+    const links = await client
       .select({ libraryId: libraryInvitations.libraryId })
       .from(libraryInvitations)
       .where(eq(libraryInvitations.invitationId, row.id));
 
     if (links.length > 0) {
-      await this.drizzle.db
+      await client
         .insert(libraryClients)
         .values(links.map((l) => ({ libraryId: l.libraryId, clientId: args.userId })))
         .onConflictDoNothing();
 
-      await this.drizzle.db
+      await client
         .delete(libraryInvitations)
         .where(eq(libraryInvitations.invitationId, row.id));
     }

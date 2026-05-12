@@ -59,27 +59,25 @@ export class OAuthService {
 
     const email = profile.email.toLowerCase();
 
-    const [created] = await this.drizzle.db
-      .insert(users)
-      .values({
-        email,
-        name: profile.name,
-        role: 'client',
-        oauthProvider: provider,
-        oauthProviderId: profile.providerId,
-        emailVerified: true,
-      })
-      .returning();
-    if (!created) throw new InternalServerErrorException('create oauth user failed');
-
-    try {
-      await this.invitations.consume({ code: invitationCode, userId: created.id, email });
-    } catch (err) {
-      await this.drizzle.db.delete(users).where(eq(users.id, created.id));
-      throw err;
-    }
-
-    return created;
+    return this.drizzle.db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(users)
+        .values({
+          email,
+          name: profile.name,
+          role: 'client',
+          oauthProvider: provider,
+          oauthProviderId: profile.providerId,
+          emailVerified: true,
+        })
+        .returning();
+      if (!created) throw new InternalServerErrorException('create oauth user failed');
+      await this.invitations.consume(
+        { code: invitationCode, userId: created.id, email },
+        tx,
+      );
+      return created;
+    });
   }
 
   private resolveCredentials(name: string) {
