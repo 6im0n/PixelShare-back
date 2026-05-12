@@ -72,7 +72,13 @@ export class PhotosController {
   ) {
     const { buffer, mime, name } = await this.photos.readFileForUser(id, user, 'original');
     res.header('content-type', mime);
-    res.header('content-disposition', `attachment; filename="${encodeURIComponent(name)}"`);
+    res.header('content-disposition', contentDisposition(name));
     return new StreamableFile(Readable.from(buffer));
   }
+}
+
+function contentDisposition(name: string): string {
+  const asciiFallback = name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  const encoded = encodeURIComponent(name);
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
 }

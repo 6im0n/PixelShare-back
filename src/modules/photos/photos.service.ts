@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import sharp from 'sharp';
 import { eq } from 'drizzle-orm';
@@ -17,6 +17,16 @@ import type { AuthUser } from '../../shared/types';
 export type UploadInput = {
   buffer: Buffer;
   originalName: string;
+};
+
+const ALLOWED_FORMATS = new Set(['jpeg', 'png', 'webp', 'gif', 'heif', 'avif']);
+const FORMAT_TO_EXT: Record<string, string> = {
+  jpeg: '.jpg',
+  png: '.png',
+  webp: '.webp',
+  gif: '.gif',
+  heif: '.heic',
+  avif: '.avif',
 };
 
 @Injectable()
@@ -44,36 +54,63 @@ export class PhotosService {
     }
     if (!file.buffer?.length) throw new BadRequestException('empty file');
 
+    let meta: sharp.Metadata;
+    try {
+      meta = await sharp(file.buffer, { failOn: 'truncated' }).metadata();
+    } catch {
+      throw new BadRequestException('file is not a valid image');
+    }
+    if (!meta.format || !ALLOWED_FORMATS.has(meta.format)) {
+      throw new BadRequestException(`unsupported image format: ${meta.format ?? 'unknown'}`);
+    }
+    if (!meta.width || !meta.height) {
+      throw new BadRequestException('image has no dimensions');
+    }
+
     const id = randomUUID();
-    const ext = (extname(file.originalName) || '.jpg').toLowerCase();
+    const ext = FORMAT_TO_EXT[meta.format] ?? '.bin';
     const originalsDir = join(this.storagePath, 'originals', libraryId);
     const thumbsDir = join(this.storagePath, 'thumbnails', libraryId);
-    await mkdir(originalsDir, { recursive: true });
-    await mkdir(thumbsDir, { recursive: true });
+    await mkdir(originalsDir, { recursive: true, mode: 0o750 });
+    await mkdir(thumbsDir, { recursive: true, mode: 0o750 });
 
     const originalPath = join(originalsDir, `${id}${ext}`);
     const thumbnailPath = join(thumbsDir, `${id}.webp`);
+    const thumbnailTmp = `${thumbnailPath}.tmp`;
+    const originalTmp = `${originalPath}.tmp`;
 
-    await writeFile(originalPath, file.buffer);
+    try {
+      await writeFile(originalTmp, file.buffer, { mode: 0o640 });
+      await sharp(file.buffer)
+        .resize({ width: 800, withoutEnlargement: true })
+        .webp({ quality: 80 })
+        .toFile(thumbnailTmp);
+      await rename(originalTmp, originalPath);
+      await rename(thumbnailTmp, thumbnailPath);
+    } catch (err) {
+      await Promise.allSettled([unlink(originalTmp), unlink(thumbnailTmp)]);
+      throw new BadRequestException('failed to process image');
+    }
 
-    const image = sharp(file.buffer);
-    const meta = await image.metadata();
-    await image.resize({ width: 800, withoutEnlargement: true }).webp({ quality: 80 }).toFile(thumbnailPath);
+    const sanitizedName = sanitizeDisplayName(file.originalName);
 
     const [row] = await this.drizzle.db
       .insert(photos)
       .values({
         id,
         libraryId,
-        name: file.originalName,
+        name: sanitizedName,
         originalPath,
         thumbnailPath,
-        width: meta.width ?? null,
-        height: meta.height ?? null,
+        width: meta.width,
+        height: meta.height,
         byteSize: file.buffer.length,
       })
       .returning();
-    if (!row) throw new BadRequestException('insert failed');
+    if (!row) {
+      await Promise.allSettled([unlink(originalPath), unlink(thumbnailPath)]);
+      throw new BadRequestException('insert failed');
+    }
     return row;
   }
 
@@ -109,6 +146,12 @@ export class PhotosService {
   }
 }
 
+function sanitizeDisplayName(raw: string): string {
+  const trimmed = (raw ?? '').replace(/[\x00-\x1f\x7f]/g, '').trim();
+  const noPath = trimmed.replace(/[\\/]/g, '_');
+  return noPath.slice(0, 255) || 'photo';
+}
+
 function guessMime(name: string): string {
   const ext = extname(name).toLowerCase();
   switch (ext) {
@@ -122,7 +165,10 @@ function guessMime(name: string): string {
     case '.gif':
       return 'image/gif';
     case '.heic':
+    case '.heif':
       return 'image/heic';
+    case '.avif':
+      return 'image/avif';
     default:
       return 'application/octet-stream';
   }
