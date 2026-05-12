@@ -1,7 +1,6 @@
-import { BadRequestException, Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
 import { AuthService } from '../auth/auth.service';
 import { InvitationsService } from '../invitations/invitations.service';
 import { DrizzleService } from '../../providers/drizzle/drizzle.service';
@@ -40,17 +39,9 @@ export class OAuthService {
 
     const existingEmail = await this.drizzle.findUserByEmail(profile.email);
     if (existingEmail) {
-      const [updated] = await this.drizzle.db
-        .update(users)
-        .set({
-          oauthProvider: provider,
-          oauthProviderId: profile.providerId,
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, existingEmail.id))
-        .returning();
-      if (!updated) throw new InternalServerErrorException('link oauth failed');
-      return updated;
+      throw new ConflictException(
+        'an account already exists for this email — sign in with your password and link the provider from your account settings',
+      );
     }
 
     if (!invitationCode) {
