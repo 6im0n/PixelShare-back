@@ -41,8 +41,8 @@ export class AccountController {
   @UseGuards(RolesGuard)
   @Roles('admin', 'photographer')
   @Get('clients')
-  listClients() {
-    return this.account.listClients();
+  listClients(@CurrentUser() user: AuthUser) {
+    return this.account.listClients(user.id, user.role);
   }
 
   @UseGuards(RolesGuard)

@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { DrizzleService } from '../../providers/drizzle/drizzle.service';
 import {
   photos as photosTable,
@@ -99,10 +99,16 @@ export class StarsService {
 
     if (userStars.length === 0) return { cleared: 0 };
 
-    for (const s of userStars) {
-      await db.insert(starHistory).values({ photoId: s.photoId, userId: user.id, value: 0 });
-      await db.delete(stars).where(and(eq(stars.photoId, s.photoId), eq(stars.userId, user.id)));
-    }
+    const photoIds = userStars.map((s) => s.photoId);
+
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(starHistory)
+        .values(photoIds.map((photoId) => ({ photoId, userId: user.id, value: 0 })));
+      await tx
+        .delete(stars)
+        .where(and(eq(stars.userId, user.id), inArray(stars.photoId, photoIds)));
+    });
     return { cleared: userStars.length };
   }
 
