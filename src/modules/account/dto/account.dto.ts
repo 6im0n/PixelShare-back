@@ -26,22 +26,6 @@ export class RequestEmailChangeDto {
   email!: string;
 }
 
-export class InviteModelDto {
-  @IsEmail()
-  @MaxLength(320)
-  email!: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(160)
-  name?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(160)
-  photographerName?: string;
-}
-
 export class UpdateUserDto extends UpdateMeDto {
   @IsOptional()
   @IsIn(['admin', 'photographer', 'client'])

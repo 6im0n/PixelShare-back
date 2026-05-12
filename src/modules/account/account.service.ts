@@ -6,7 +6,7 @@ import { DrizzleService } from '../../providers/drizzle/drizzle.service';
 import { ResendService, verificationEmailHtml } from '../../providers/resend/resend.service';
 import { users, libraries, libraryClients } from '../../providers/drizzle/schema/schema';
 import { hashPassword, verifyPassword } from '../../shared/password.util';
-import type { UpdateMeDto, UpdateUserDto, RequestEmailChangeDto, InviteModelDto } from './dto/account.dto';
+import type { UpdateMeDto, UpdateUserDto, RequestEmailChangeDto } from './dto/account.dto';
 
 @Injectable()
 export class AccountService {
@@ -106,26 +106,6 @@ export class AccountService {
       .innerJoin(libraries, eq(libraryClients.libraryId, libraries.id))
       .where(eq(libraryClients.clientId, userId));
     return rows;
-  }
-
-  async inviteModel(dto: InviteModelDto) {
-    const link = `${this.frontendUrl}/register`;
-    try {
-      await this.resend.send({
-        to: dto.email,
-        subject: `You've been invited to PixelShare`,
-        html: verificationEmailHtml({
-          name: dto.name || 'there',
-          link,
-          subject: `You've been invited to PixelShare`,
-          action: `You've been invited to join PixelShare${dto.photographerName ? ` by <strong>${dto.photographerName}</strong>` : ''}. Create your account to view and rate your photo sessions.`,
-          note: `Or copy this link: ${link}`,
-        }),
-      });
-    } catch {
-      // non-blocking
-    }
-    return { ok: true };
   }
 
   async updateUser(userId: string, dto: UpdateUserDto) {
