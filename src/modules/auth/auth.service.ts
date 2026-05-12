@@ -17,8 +17,9 @@ import {
   passwordResetEmailHtml,
   verificationEmailHtml,
 } from '../../providers/resend/resend.service';
+import { InvitationsService } from '../invitations/invitations.service';
 import { hashPassword, verifyPassword } from '../../shared/password.util';
-import type { AuthUser, JwtPayload, UserRole } from '../../shared/types';
+import type { AuthUser, JwtPayload } from '../../shared/types';
 import type { AuthTokens, ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto } from './dto/auth.dto';
 
 @Injectable()
@@ -32,6 +33,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly resend: ResendService,
+    private readonly invitations: InvitationsService,
   ) {
     this.accessTtlSec = parseTtlSeconds(config.get<string>('JWT_ACCESS_TTL') ?? '15m');
     this.refreshTtlSec = parseTtlSeconds(config.get<string>('JWT_REFRESH_TTL') ?? '30d');
@@ -44,15 +46,23 @@ export class AuthService {
     const existing = await this.drizzle.findUserByEmail(email);
     if (existing) throw new ConflictException('email already registered');
 
+    const code = dto.invitationCode.toUpperCase();
+
     const passwordHash = await hashPassword(dto.password);
-    const role: UserRole = dto.role ?? 'client';
 
     const [user] = await this.drizzle.db
       .insert(users)
-      .values({ email, name: dto.name, passwordHash, role })
+      .values({ email, name: dto.name, passwordHash, role: 'client' })
       .returning();
 
     if (!user) throw new BadRequestException('failed to create user');
+
+    try {
+      await this.invitations.consume({ code, userId: user.id, email });
+    } catch (err) {
+      await this.drizzle.db.delete(users).where(eq(users.id, user.id));
+      throw err;
+    }
 
     const token = randomUUID();
     await this.drizzle.db
