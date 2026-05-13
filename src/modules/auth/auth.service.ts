@@ -17,9 +17,12 @@ import {
   passwordResetEmailHtml,
   verificationEmailHtml,
 } from '../../providers/resend/resend.service';
+import { InvitationsService } from '../invitations/invitations.service';
 import { hashPassword, verifyPassword } from '../../shared/password.util';
-import type { AuthUser, JwtPayload, UserRole } from '../../shared/types';
+import type { AuthUser, JwtPayload } from '../../shared/types';
 import type { AuthTokens, ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto } from './dto/auth.dto';
+
+const EMAIL_VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class AuthService {
@@ -32,11 +35,21 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly resend: ResendService,
+    private readonly invitations: InvitationsService,
   ) {
     this.accessTtlSec = parseTtlSeconds(config.get<string>('JWT_ACCESS_TTL') ?? '15m');
     this.refreshTtlSec = parseTtlSeconds(config.get<string>('JWT_REFRESH_TTL') ?? '30d');
-    this.refreshSecret =
-      config.get<string>('JWT_REFRESH_SECRET') ?? config.getOrThrow<string>('JWT_SECRET');
+    const accessSecret = config.getOrThrow<string>('JWT_SECRET');
+    const refreshSecret = config.get<string>('JWT_REFRESH_SECRET');
+    if (process.env.NODE_ENV === 'production') {
+      if (!refreshSecret) {
+        throw new Error('JWT_REFRESH_SECRET is required in production');
+      }
+      if (refreshSecret === accessSecret) {
+        throw new Error('JWT_REFRESH_SECRET must differ from JWT_SECRET');
+      }
+    }
+    this.refreshSecret = refreshSecret ?? accessSecret;
   }
 
   async register(dto: RegisterDto): Promise<AuthTokens & { user: AuthUser }> {
@@ -44,20 +57,28 @@ export class AuthService {
     const existing = await this.drizzle.findUserByEmail(email);
     if (existing) throw new ConflictException('email already registered');
 
+    const code = dto.invitationCode.toUpperCase();
+
     const passwordHash = await hashPassword(dto.password);
-    const role: UserRole = dto.role ?? 'client';
 
-    const [user] = await this.drizzle.db
-      .insert(users)
-      .values({ email, name: dto.name, passwordHash, role })
-      .returning();
-
-    if (!user) throw new BadRequestException('failed to create user');
+    const user = await this.drizzle.db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(users)
+        .values({ email, name: dto.name, passwordHash, role: 'client' })
+        .returning();
+      if (!created) throw new BadRequestException('failed to create user');
+      await this.invitations.consume({ code, userId: created.id, email }, tx);
+      return created;
+    });
 
     const token = randomUUID();
+    const tokenExpiresAt = new Date(Date.now() + EMAIL_VERIFY_TTL_MS);
     await this.drizzle.db
       .update(users)
-      .set({ emailVerificationToken: token })
+      .set({
+        emailVerificationToken: token,
+        emailVerificationTokenExpiresAt: tokenExpiresAt,
+      })
       .where(eq(users.id, user.id));
 
     const frontendUrl =
@@ -92,6 +113,7 @@ export class AuthService {
         secret: this.refreshSecret,
         algorithms: ['HS256'],
         issuer: 'pixelshare',
+        audience: 'pixelshare-api',
       });
     } catch {
       throw new UnauthorizedException('invalid refresh token');
@@ -105,17 +127,19 @@ export class AuthService {
   async issue(user: User): Promise<AuthTokens & { user: AuthUser }> {
     const base: Omit<JwtPayload, 'type'> = {
       sub: user.id,
-      email: user.email,
-      name: user.name,
       role: user.role,
     };
     const accessToken = await this.jwt.signAsync(
       { ...base, type: 'access' },
-      { expiresIn: this.accessTtlSec },
+      { expiresIn: this.accessTtlSec, audience: 'pixelshare-api' },
     );
     const refreshToken = await this.jwt.signAsync(
       { ...base, type: 'refresh' },
-      { secret: this.refreshSecret, expiresIn: this.refreshTtlSec },
+      {
+        secret: this.refreshSecret,
+        expiresIn: this.refreshTtlSec,
+        audience: 'pixelshare-api',
+      },
     );
     return {
       accessToken,
@@ -133,10 +157,17 @@ export class AuthService {
       .where(eq(users.emailVerificationToken, token))
       .limit(1);
     if (!user) throw new BadRequestException('invalid or expired token');
+    if (
+      user.emailVerificationTokenExpiresAt &&
+      user.emailVerificationTokenExpiresAt < new Date()
+    ) {
+      throw new BadRequestException('invalid or expired token');
+    }
 
     const patch: Partial<typeof users.$inferInsert> = {
       emailVerified: true,
       emailVerificationToken: null,
+      emailVerificationTokenExpiresAt: null,
       updatedAt: new Date(),
     };
 

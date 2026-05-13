@@ -1,12 +1,12 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import { ConfigService } from '@nestjs/config';
 import { DrizzleService } from '../../providers/drizzle/drizzle.service';
 import { ResendService, verificationEmailHtml } from '../../providers/resend/resend.service';
 import { users, libraries, libraryClients } from '../../providers/drizzle/schema/schema';
 import { hashPassword, verifyPassword } from '../../shared/password.util';
-import type { UpdateMeDto, UpdateUserDto, RequestEmailChangeDto, InviteModelDto } from './dto/account.dto';
+import type { UpdateMeDto, UpdateUserDto, RequestEmailChangeDto } from './dto/account.dto';
 
 @Injectable()
 export class AccountService {
@@ -52,14 +52,32 @@ export class AccountService {
 
   async requestEmailChange(userId: string, dto: RequestEmailChangeDto) {
     const newEmail = dto.email.toLowerCase();
-    const existing = await this.drizzle.findUserByEmail(newEmail);
-    if (existing && existing.id !== userId) throw new BadRequestException('email already in use');
-
     const token = randomUUID();
-    await this.drizzle.db
-      .update(users)
-      .set({ pendingEmail: newEmail, emailVerificationToken: token, updatedAt: new Date() })
-      .where(eq(users.id, userId));
+
+    try {
+      await this.drizzle.db.transaction(async (tx) => {
+        const [clash] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.email, newEmail), ne(users.id, userId)))
+          .limit(1);
+        if (clash) throw new BadRequestException('email already in use');
+
+        await tx
+          .update(users)
+          .set({
+            pendingEmail: newEmail,
+            emailVerificationToken: token,
+            emailVerificationTokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, userId));
+      });
+    } catch (err) {
+      const pg = err as { code?: string };
+      if (pg.code === '23505') throw new BadRequestException('email already in use');
+      throw err;
+    }
 
     const link = `${this.frontendUrl}/verify-email?token=${token}`;
     try {
@@ -87,12 +105,33 @@ export class AccountService {
     return rows.map(sanitize);
   }
 
-  async listClients() {
+  async listClients(actorId: string, actorRole: string) {
+    if (actorRole === 'admin') {
+      const rows = await this.drizzle.db
+        .select()
+        .from(users)
+        .where(eq(users.role, 'client'));
+      return rows.map(sanitize);
+    }
     const rows = await this.drizzle.db
-      .select()
+      .selectDistinct({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        role: users.role,
+        emailVerified: users.emailVerified,
+        pendingEmail: users.pendingEmail,
+        oauthProvider: users.oauthProvider,
+        oauthProviderId: users.oauthProviderId,
+        lastLoginAt: users.lastLoginAt,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+      })
       .from(users)
-      .where(eq(users.role, 'client'));
-    return rows.map(sanitize);
+      .innerJoin(libraryClients, eq(libraryClients.clientId, users.id))
+      .innerJoin(libraries, eq(libraries.id, libraryClients.libraryId))
+      .where(and(eq(libraries.photographerId, actorId), eq(users.role, 'client')));
+    return rows;
   }
 
   async getUserLibraries(userId: string) {
@@ -108,31 +147,22 @@ export class AccountService {
     return rows;
   }
 
-  async inviteModel(dto: InviteModelDto) {
-    const link = `${this.frontendUrl}/register`;
-    try {
-      await this.resend.send({
-        to: dto.email,
-        subject: `You've been invited to PixelShare`,
-        html: verificationEmailHtml({
-          name: dto.name || 'there',
-          link,
-          subject: `You've been invited to PixelShare`,
-          action: `You've been invited to join PixelShare${dto.photographerName ? ` by <strong>${dto.photographerName}</strong>` : ''}. Create your account to view and rate your photo sessions.`,
-          note: `Or copy this link: ${link}`,
-        }),
-      });
-    } catch {
-      // non-blocking
-    }
-    return { ok: true };
-  }
-
   async updateUser(userId: string, dto: UpdateUserDto) {
+    const target = await this.drizzle.requireUser(userId);
+
     const patch: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
     if (dto.name !== undefined) patch.name = dto.name;
     if (dto.role !== undefined) patch.role = dto.role;
     if (dto.password !== undefined) patch.passwordHash = await hashPassword(dto.password);
+
+    if (
+      target.role === 'admin' &&
+      dto.role !== undefined &&
+      dto.role !== 'admin' &&
+      !(await this.hasOtherAdmin(userId))
+    ) {
+      throw new ConflictException('cannot demote the last remaining admin');
+    }
 
     const [row] = await this.drizzle.db
       .update(users)
@@ -144,6 +174,10 @@ export class AccountService {
   }
 
   async deleteUser(userId: string) {
+    const target = await this.drizzle.requireUser(userId);
+    if (target.role === 'admin' && !(await this.hasOtherAdmin(userId))) {
+      throw new ConflictException('cannot delete the last remaining admin');
+    }
     try {
       const [row] = await this.drizzle.db.delete(users).where(eq(users.id, userId)).returning({
         id: users.id,
@@ -156,6 +190,14 @@ export class AccountService {
       throw err;
     }
     return { deleted: true };
+  }
+
+  private async hasOtherAdmin(excludeUserId: string): Promise<boolean> {
+    const [row] = await this.drizzle.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(users)
+      .where(and(eq(users.role, 'admin'), ne(users.id, excludeUserId)));
+    return (row?.count ?? 0) > 0;
   }
 }
 

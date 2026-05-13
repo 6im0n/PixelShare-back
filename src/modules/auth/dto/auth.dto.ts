@@ -1,5 +1,4 @@
-import { IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
-import type { UserRole } from '../../../shared/types';
+import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @IsEmail()
@@ -16,18 +15,28 @@ export class RegisterDto {
   @MaxLength(256)
   password!: string;
 
-  @IsOptional()
-  @IsIn(['admin', 'photographer', 'client'])
-  role?: UserRole;
+  @IsString()
+  @MinLength(8)
+  @MaxLength(8)
+  invitationCode!: string;
 }
 
 export class LoginDto {
   @IsEmail()
+  @MaxLength(320)
   email!: string;
 
   @IsString()
-  @MinLength(1)
+  @MinLength(8)
+  @MaxLength(256)
   password!: string;
+}
+
+export class VerifyEmailDto {
+  @IsString()
+  @MinLength(8)
+  @MaxLength(256)
+  token!: string;
 }
 
 export class RefreshDto {

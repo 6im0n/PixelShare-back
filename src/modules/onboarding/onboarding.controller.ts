@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../../shared/public.decorator';
 import { OnboardingService } from './onboarding.service';
@@ -16,6 +17,7 @@ export class OnboardingController {
   }
 
   @Public()
+  @Throttle({ strict: { limit: 5, ttl: 60_000 } })
   @Post('setup')
   setup(@Body() dto: SetupDto) {
     return this.onboarding.setup(dto);

@@ -1,8 +1,8 @@
-import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
 import { AuthService } from '../auth/auth.service';
+import { InvitationsService } from '../invitations/invitations.service';
 import { DrizzleService } from '../../providers/drizzle/drizzle.service';
 import { users } from '../../providers/drizzle/schema/schema';
 import { getOAuthProvider } from './oauth.registry';
@@ -14,6 +14,7 @@ export class OAuthService {
     private readonly config: ConfigService,
     private readonly drizzle: DrizzleService,
     private readonly auth: AuthService,
+    private readonly invitations: InvitationsService,
   ) {}
 
   buildAuthorizationUrl(name: string): { url: string; state: string } {
@@ -24,45 +25,50 @@ export class OAuthService {
     return { url, state };
   }
 
-  async handleCallback(name: string, code: string) {
+  async handleCallback(name: string, code: string, invitationCode?: string) {
     const provider = getOAuthProvider(name);
     const { clientId, clientSecret, redirectUri } = this.resolveCredentials(name);
     const profile = await provider.exchangeCode({ code, clientId, clientSecret, redirectUri });
-    const user = await this.upsertUser(provider.name, profile);
+    const user = await this.upsertUser(provider.name, profile, invitationCode);
     return this.auth.issue(user);
   }
 
-  private async upsertUser(provider: string, profile: OAuthProfile) {
+  private async upsertUser(provider: string, profile: OAuthProfile, invitationCode?: string) {
     const existingOAuth = await this.drizzle.findUserByOAuth(provider, profile.providerId);
     if (existingOAuth) return existingOAuth;
 
     const existingEmail = await this.drizzle.findUserByEmail(profile.email);
     if (existingEmail) {
-      const [updated] = await this.drizzle.db
-        .update(users)
-        .set({
-          oauthProvider: provider,
-          oauthProviderId: profile.providerId,
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, existingEmail.id))
-        .returning();
-      if (!updated) throw new InternalServerErrorException('link oauth failed');
-      return updated;
+      throw new ConflictException(
+        'an account already exists for this email — sign in with your password and link the provider from your account settings',
+      );
     }
 
-    const [created] = await this.drizzle.db
-      .insert(users)
-      .values({
-        email: profile.email.toLowerCase(),
-        name: profile.name,
-        role: 'client',
-        oauthProvider: provider,
-        oauthProviderId: profile.providerId,
-      })
-      .returning();
-    if (!created) throw new InternalServerErrorException('create oauth user failed');
-    return created;
+    if (!invitationCode) {
+      throw new UnauthorizedException('invitation code required to register');
+    }
+
+    const email = profile.email.toLowerCase();
+
+    return this.drizzle.db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(users)
+        .values({
+          email,
+          name: profile.name,
+          role: 'client',
+          oauthProvider: provider,
+          oauthProviderId: profile.providerId,
+          emailVerified: true,
+        })
+        .returning();
+      if (!created) throw new InternalServerErrorException('create oauth user failed');
+      await this.invitations.consume(
+        { code: invitationCode, userId: created.id, email },
+        tx,
+      );
+      return created;
+    });
   }
 
   private resolveCredentials(name: string) {

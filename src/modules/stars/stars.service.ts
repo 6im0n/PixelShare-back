@@ -1,5 +1,5 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { DrizzleService } from '../../providers/drizzle/drizzle.service';
 import {
   photos as photosTable,
@@ -14,25 +14,29 @@ export class StarsService {
   constructor(private readonly drizzle: DrizzleService) {}
 
   async setStar(photoId: string, user: AuthUser, value: number) {
+    if (!Number.isInteger(value) || value < 0 || value > 5) {
+      throw new BadRequestException('star value must be an integer between 0 and 5');
+    }
     const photo = await this.drizzle.requirePhoto(photoId);
     if (!(await this.drizzle.canAccessLibrary(photo.libraryId, user.id, user.role))) {
       throw new ForbiddenException('no access');
     }
-    const db = this.drizzle.db;
-    if (value === 0) {
-      await db
-        .delete(stars)
-        .where(and(eq(stars.photoId, photoId), eq(stars.userId, user.id)));
-    } else {
-      await db
-        .insert(stars)
-        .values({ photoId, userId: user.id, value })
-        .onConflictDoUpdate({
-          target: [stars.photoId, stars.userId],
-          set: { value, updatedAt: new Date() },
-        });
-    }
-    await db.insert(starHistory).values({ photoId, userId: user.id, value });
+    await this.drizzle.db.transaction(async (tx) => {
+      if (value === 0) {
+        await tx
+          .delete(stars)
+          .where(and(eq(stars.photoId, photoId), eq(stars.userId, user.id)));
+      } else {
+        await tx
+          .insert(stars)
+          .values({ photoId, userId: user.id, value })
+          .onConflictDoUpdate({
+            target: [stars.photoId, stars.userId],
+            set: { value, updatedAt: new Date() },
+          });
+      }
+      await tx.insert(starHistory).values({ photoId, userId: user.id, value });
+    });
     return { photoId, value };
   }
 
@@ -41,6 +45,7 @@ export class StarsService {
     if (!(await this.drizzle.canAccessLibrary(photo.libraryId, user.id, user.role))) {
       throw new ForbiddenException('no access');
     }
+    const lib = await this.drizzle.requireLibrary(photo.libraryId);
     const rows = await this.drizzle.db
       .select({
         photoId: stars.photoId,
@@ -55,7 +60,7 @@ export class StarsService {
       .where(eq(stars.photoId, photoId));
 
     const myStars = rows.find((r) => r.userId === user.id)?.value ?? 0;
-    const photographerRow = rows.find((r) => r.userRole === 'photographer' || r.userRole === 'admin');
+    const photographerRow = rows.find((r) => r.userId === lib.photographerId);
     return {
       photoId,
       myStars,
@@ -99,10 +104,16 @@ export class StarsService {
 
     if (userStars.length === 0) return { cleared: 0 };
 
-    for (const s of userStars) {
-      await db.insert(starHistory).values({ photoId: s.photoId, userId: user.id, value: 0 });
-      await db.delete(stars).where(and(eq(stars.photoId, s.photoId), eq(stars.userId, user.id)));
-    }
+    const photoIds = userStars.map((s) => s.photoId);
+
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(starHistory)
+        .values(photoIds.map((photoId) => ({ photoId, userId: user.id, value: 0 })));
+      await tx
+        .delete(stars)
+        .where(and(eq(stars.userId, user.id), inArray(stars.photoId, photoIds)));
+    });
     return { cleared: userStars.length };
   }
 

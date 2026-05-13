@@ -28,6 +28,9 @@ export const users = pgTable(
     oauthProviderId: varchar('oauth_provider_id', { length: 255 }),
     emailVerified: boolean('email_verified').notNull().default(false),
     emailVerificationToken: text('email_verification_token'),
+    emailVerificationTokenExpiresAt: timestamp('email_verification_token_expires_at', {
+      withTimezone: true,
+    }),
     pendingEmail: varchar('pending_email', { length: 320 }),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -130,6 +133,47 @@ export const starHistory = pgTable(
   }),
 );
 
+export const invitations = pgTable(
+  'invitations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    code: varchar('code', { length: 8 }).notNull(),
+    email: varchar('email', { length: 320 }).notNull(),
+    name: varchar('name', { length: 160 }).notNull(),
+    invitedByUserId: uuid('invited_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    consumedByUserId: uuid('consumed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => ({
+    codeIdx: uniqueIndex('invitations_code_idx').on(t.code),
+    emailIdx: index('invitations_email_idx').on(t.email),
+  }),
+);
+
+export const libraryInvitations = pgTable(
+  'library_invitations',
+  {
+    libraryId: uuid('library_id')
+      .notNull()
+      .references(() => libraries.id, { onDelete: 'cascade' }),
+    invitationId: uuid('invitation_id')
+      .notNull()
+      .references(() => invitations.id, { onDelete: 'cascade' }),
+    grantedAt: timestamp('granted_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.libraryId, t.invitationId] }),
+    invitationIdx: index('library_invitations_invitation_idx').on(t.invitationId),
+  }),
+);
+
 export const passwordResetTokens = pgTable(
   'password_reset_tokens',
   {
@@ -205,3 +249,31 @@ export type NewPhoto = typeof photos.$inferInsert;
 export type Star = typeof stars.$inferSelect;
 export type NewStar = typeof stars.$inferInsert;
 export type StarHistoryEntry = typeof starHistory.$inferSelect;
+export type Invitation = typeof invitations.$inferSelect;
+export type NewInvitation = typeof invitations.$inferInsert;
+export type LibraryInvitation = typeof libraryInvitations.$inferSelect;
+
+export const invitationsRelations = relations(invitations, ({ one, many }) => ({
+  invitedBy: one(users, {
+    fields: [invitations.invitedByUserId],
+    references: [users.id],
+    relationName: 'invitationsCreated',
+  }),
+  consumedBy: one(users, {
+    fields: [invitations.consumedByUserId],
+    references: [users.id],
+    relationName: 'invitationsConsumed',
+  }),
+  libraryInvitations: many(libraryInvitations),
+}));
+
+export const libraryInvitationsRelations = relations(libraryInvitations, ({ one }) => ({
+  library: one(libraries, {
+    fields: [libraryInvitations.libraryId],
+    references: [libraries.id],
+  }),
+  invitation: one(invitations, {
+    fields: [libraryInvitations.invitationId],
+    references: [invitations.id],
+  }),
+}));

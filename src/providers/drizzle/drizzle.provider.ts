@@ -5,6 +5,8 @@ import { createDrizzleClient, type DrizzleDB } from './schema/client';
 export const DRIZZLE = Symbol('DRIZZLE_DB');
 
 export type DrizzleInjection = DrizzleDB;
+export type DrizzleTx = Parameters<Parameters<DrizzleDB['transaction']>[0]>[0];
+export type DrizzleClient = DrizzleDB | DrizzleTx;
 
 export const drizzleProvider: Provider = {
   provide: DRIZZLE,

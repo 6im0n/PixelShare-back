@@ -15,7 +15,7 @@ import { Roles } from '../../shared/roles.decorator';
 import { RolesGuard } from '../../shared/roles.guard';
 import type { AuthUser } from '../../shared/types';
 import { AccountService } from './account.service';
-import { InviteModelDto, RequestEmailChangeDto, UpdateMeDto, UpdateUserDto } from './dto/account.dto';
+import { RequestEmailChangeDto, UpdateMeDto, UpdateUserDto } from './dto/account.dto';
 
 @ApiBearerAuth()
 @ApiTags('account')
@@ -41,15 +41,8 @@ export class AccountController {
   @UseGuards(RolesGuard)
   @Roles('admin', 'photographer')
   @Get('clients')
-  listClients() {
-    return this.account.listClients();
-  }
-
-  @UseGuards(RolesGuard)
-  @Roles('admin', 'photographer')
-  @Post('invite')
-  inviteModel(@CurrentUser() user: AuthUser, @Body() dto: InviteModelDto) {
-    return this.account.inviteModel({ ...dto, photographerName: dto.photographerName ?? user.name });
+  listClients(@CurrentUser() user: AuthUser) {
+    return this.account.listClients(user.id, user.role);
   }
 
   @UseGuards(RolesGuard)
