@@ -53,7 +53,7 @@ export class PhotosService {
       .from(photos)
       .where(eq(photos.libraryId, libraryId))
       .orderBy(desc(photos.uploadedAt))
-      .limit(Math.min(page.limit, 200))
+      .limit(Math.min(page.limit, 5000))
       .offset(Math.max(0, page.offset));
   }
 

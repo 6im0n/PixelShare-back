@@ -78,6 +78,7 @@ export class PhotosController {
   @SkipThrottle({ default: true, strict: true, lookup: true })
   async original(
     @Param('id', ParseUUIDPipe) id: string,
+
     @CurrentUser() user: AuthUser,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
