@@ -13,6 +13,7 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Readable } from 'node:stream';
 import { CurrentUser } from '../../shared/current-user.decorator';
@@ -39,6 +40,7 @@ export class PhotosController {
   }
 
   @Post('libraries/:libraryId/photos')
+  @SkipThrottle()
   async upload(
     @Param('libraryId', ParseUUIDPipe) libraryId: string,
     @CurrentUser() user: AuthUser,
