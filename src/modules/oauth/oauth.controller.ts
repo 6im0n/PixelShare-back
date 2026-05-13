@@ -19,19 +19,27 @@ import { OAuthService } from './oauth.service';
 const STATE_COOKIE = 'oauth_state';
 const INVITATION_COOKIE = 'oauth_invitation';
 const INVITATION_CODE_RE = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/;
-const ALLOWED_FRONTEND_ORIGINS = new Set([
-  'https://pixelshare.srv.simon-gl.fr',
+const DEV_FRONTEND_ORIGINS = [
   'http://localhost:3000',
   'http://localhost:3001',
   'http://127.0.0.1:3000',
   'http://127.0.0.1:3001',
-]);
+];
+
+function allowedRedirectOrigins(): Set<string> {
+  const env = (process.env.CORS_ORIGIN ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const isProd = process.env.NODE_ENV === 'production';
+  return new Set(isProd ? env : [...env, ...DEV_FRONTEND_ORIGINS]);
+}
 
 function isAllowedRedirect(url: string): boolean {
   try {
     const u = new URL(url);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
-    return ALLOWED_FRONTEND_ORIGINS.has(u.origin);
+    return allowedRedirectOrigins().has(u.origin);
   } catch {
     return false;
   }

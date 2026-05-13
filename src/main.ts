@@ -13,11 +13,6 @@ import fastifyHelmet from '@fastify/helmet';
 import fastifyMultipart from '@fastify/multipart';
 import { AppModule } from './app.module';
 
-const PROD_ORIGINS = [
-  'https://pixelshare.srv.simon-gl.fr',
-  'https://api.pixelshare.srv.simon-gl.fr',
-];
-
 const DEV_ORIGINS = [
   'http://localhost:3000',
   'http://localhost:3001',
@@ -25,11 +20,21 @@ const DEV_ORIGINS = [
   'http://127.0.0.1:3001',
 ];
 
+function parseOrigins(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 async function bootstrap() {
   const isProd = process.env.NODE_ENV === 'production';
-  const allowedOrigins = isProd
-    ? PROD_ORIGINS
-    : [...PROD_ORIGINS, ...DEV_ORIGINS];
+  const envOrigins = parseOrigins(process.env.CORS_ORIGIN);
+  if (isProd && envOrigins.length === 0) {
+    throw new Error('CORS_ORIGIN env var is required in production (comma-separated allowlist)');
+  }
+  const allowedOrigins = isProd ? envOrigins : [...envOrigins, ...DEV_ORIGINS];
 
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
