@@ -28,6 +28,7 @@ export class PhotosController {
   constructor(private readonly photos: PhotosService) {}
 
   @Get('libraries/:libraryId/photos')
+  @SkipThrottle({ default: true, strict: true, lookup: true })
   list(
     @Param('libraryId', ParseUUIDPipe) libraryId: string,
     @CurrentUser() user: AuthUser,
@@ -61,6 +62,7 @@ export class PhotosController {
   }
 
   @Get('photos/:id/thumbnail')
+  @SkipThrottle({ default: true, strict: true, lookup: true })
   @Header('Cache-Control', 'private, max-age=0, must-revalidate')
   async thumbnail(
     @Param('id', ParseUUIDPipe) id: string,
@@ -73,6 +75,7 @@ export class PhotosController {
   }
 
   @Get('photos/:id/original')
+  @SkipThrottle({ default: true, strict: true, lookup: true })
   async original(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthUser,
