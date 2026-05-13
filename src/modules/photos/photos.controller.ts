@@ -40,7 +40,7 @@ export class PhotosController {
   }
 
   @Post('libraries/:libraryId/photos')
-  @SkipThrottle()
+  @SkipThrottle({ default: true, strict: true, lookup: true })
   async upload(
     @Param('libraryId', ParseUUIDPipe) libraryId: string,
     @CurrentUser() user: AuthUser,
