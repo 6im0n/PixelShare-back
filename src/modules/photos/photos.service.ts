@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
 import sharp from 'sharp';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { DrizzleService } from '../../providers/drizzle/drizzle.service';
 import { photos } from '../../providers/drizzle/schema/schema';
 import type { AuthUser } from '../../shared/types';
@@ -52,6 +52,7 @@ export class PhotosService {
       .select()
       .from(photos)
       .where(eq(photos.libraryId, libraryId))
+      .orderBy(desc(photos.uploadedAt))
       .limit(Math.min(page.limit, 200))
       .offset(Math.max(0, page.offset));
   }

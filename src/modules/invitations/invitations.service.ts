@@ -11,7 +11,6 @@ import { DrizzleService } from '../../providers/drizzle/drizzle.service';
 import type { DrizzleClient } from '../../providers/drizzle/drizzle.provider';
 import {
   invitations,
-  libraries,
   libraryClients,
   libraryInvitations,
   users,
@@ -191,7 +190,7 @@ export class InvitationsService {
     args: { code: string; userId: string; email: string },
     client: DrizzleClient = this.drizzle.db,
   ): Promise<void> {
-    const row = await this.findActiveByCode(args.code);
+    const row = await this.findActiveByCode(args.code, client);
     if (!row) throw new BadRequestException('invitation invalid or expired');
     if (row.email.toLowerCase() !== args.email.toLowerCase()) {
       throw new BadRequestException('invitation invalid or expired');
@@ -205,6 +204,7 @@ export class InvitationsService {
           eq(invitations.id, row.id),
           isNull(invitations.consumedAt),
           isNull(invitations.revokedAt),
+          gt(invitations.expiresAt, new Date()),
         ),
       )
       .returning({ id: invitations.id });
@@ -274,8 +274,11 @@ export class InvitationsService {
     return row;
   }
 
-  private async findActiveByCode(code: string): Promise<Invitation | null> {
-    const [row] = await this.drizzle.db
+  private async findActiveByCode(
+    code: string,
+    client: DrizzleClient = this.drizzle.db,
+  ): Promise<Invitation | null> {
+    const [row] = await client
       .select()
       .from(invitations)
       .where(eq(invitations.code, code.toUpperCase()))
